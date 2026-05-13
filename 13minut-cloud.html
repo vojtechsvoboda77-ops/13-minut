@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>13 minut — Harmonogram</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f0f13; color: #e0e0e0; min-height: 100vh; }
+
+  /* LOADING */
+  #loading-screen { position:fixed; inset:0; background:#0f0f13; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; z-index:9999; }
+  #loading-screen .spin { width:32px; height:32px; border:3px solid #222; border-top-color:#4a6fa5; border-radius:50%; animation:spin 0.8s linear infinite; }
+  #loading-screen p { font-size:13px; color:#444; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* HEADER */
+  header { padding: 12px 20px 10px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 12px; }
+  .hdr-titles { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .hdr-title, .hdr-sub { border-radius: 3px; padding: 2px 5px; margin: -2px -5px; transition: background 0.15s; }
+  .hdr-title { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+  .hdr-sub   { font-size: 12px; color: #555; }
+  .hdr-sub.empty::before { content: "Přidat podnadpis…"; color: #2a2a2a; font-style: italic; }
+  .hdr-input { background: #1e1e1e; border: 1px solid #4a6fa5; color: #fff; border-radius: 4px; padding: 2px 6px; font-family: inherit; outline: none; }
+  .hdr-input.title-input { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; width: 220px; }
+  .hdr-input.sub-input   { font-size: 12px; width: 280px; color: #aaa; }
+  .hdr-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .hdr-btn { background: transparent; border: 1px solid #2a2a2a; color: #666; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-family: inherit; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .hdr-btn:hover { border-color: #555; color: #ccc; background: #161616; }
+  .hdr-btn.editor-active { border-color: #4a6fa5; color: #4a6fa5; background: #4a6fa511; }
+  .hdr-sep { width: 1px; height: 20px; background: #222; }
+  .view-badge { font-size: 10px; color: #333; padding: 3px 8px; border: 1px solid #1e1e1e; border-radius: 4px; }
+
+  /* edit-only elements hidden in view mode */
+  body.view-mode .edit-only { display: none !important; }
+  body.view-mode .hdr-title, body.view-mode .hdr-sub { cursor: default; }
+  body.view-mode .hdr-title:hover, body.view-mode .hdr-sub:hover { background: transparent; }
+  body.view-mode .drag-handle { visibility: hidden; }
+
+  /* LAYOUT */
+  .main { display: grid; grid-template-columns: 1fr 340px; height: calc(100vh - 53px); }
+
+  /* LEFT */
+  .gantt-panel { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #1e1e1e; }
+  .gantt-top { flex-shrink: 0; padding: 14px 16px 0 22px; }
+  .gantt-events-scroll { flex: 1; overflow-y: auto; padding: 0 16px 20px 22px; }
+
+  .phase-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .events-header { display: flex; align-items: center; gap: 8px; padding: 10px 0 8px; border-bottom: 1px solid #1e1e1e; margin-bottom: 4px; }
+  .events-header .section-title { margin-bottom: 0; flex-shrink: 0; }
+  .filter-input { flex: 1; background: #161616; border: 1px solid #222; color: #ccc; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: inherit; outline: none; min-width: 0; }
+  .filter-input:focus { border-color: #4a6fa5; }
+  .filter-input::placeholder { color: #333; }
+  .filter-clear { background: transparent; border: none; color: #444; cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; flex-shrink: 0; }
+  .filter-clear:hover { color: #aaa; }
+
+  .section-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #555; margin-bottom: 10px; }
+
+  /* RULER */
+  .gantt-wrap { position: relative; }
+  .year-ruler  { display: flex; }
+  .year-cell   { flex: none; font-size: 10px; font-weight: 700; color: #555; padding: 0 0 2px 4px; border-left: 1px solid #2a2a2a; }
+  .unit-ruler  { display: flex; border-bottom: 1px solid #222; min-height: 16px; }
+  .unit-cell   { flex: none; font-size: 10px; color: #3a3a3a; padding: 2px 0 3px 0; text-align: center; border-left: 1px solid #1a1a1a; overflow: hidden; min-height: 16px; }
+
+  /* GANTT ROWS */
+  .gantt-rows  { position: relative; padding-top: 6px; }
+  .gantt-row   { display: flex; align-items: center; margin-bottom: 4px; user-select: none; }
+  .drag-handle { width: 14px; flex-shrink: 0; color: #2a2a2a; cursor: grab; font-size: 12px; text-align: center; }
+  .drag-handle:hover { color: #555; }
+  .gantt-label { width: 112px; flex-shrink: 0; font-size: 12px; color: #666; text-align: right; padding-right: 10px; cursor: pointer; }
+  .gantt-label:hover { color: #ddd; }
+  .gantt-track { flex: 1; height: 18px; position: relative; background: #161616; border-radius: 3px; overflow: hidden; }
+  .gantt-bar   { position: absolute; top: 2px; height: 14px; border-radius: 3px; cursor: grab; transition: opacity 0.15s; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .gantt-bar:hover { opacity: 1 !important; }
+  .gantt-bar.bar-dragging { transition: none; opacity: 1 !important; box-shadow: 0 0 0 2px #fff3; }
+  .gantt-row.phase-selected .gantt-label { color: #fff; }
+  .gantt-row.phase-selected .gantt-track { outline: 1px solid #4a6fa5; }
+  .gantt-row.drag-over-top    { border-top: 2px solid #4a6fa5; }
+  .gantt-row.drag-over-bottom { border-bottom: 2px solid #4a6fa5; }
+  .gantt-row.dragging         { opacity: 0.4; }
+
+  /* MILESTONES row */
+  .milestone-track { flex: 1; height: 18px; position: relative; }
+  .milestone-diamond { position: absolute; top: 50%; transform: translate(-50%, -50%) rotate(45deg); width: 10px; height: 10px; cursor: pointer; border-radius: 1px; }
+  .milestone-diamond:hover { transform: translate(-50%, -50%) rotate(45deg) scale(1.3); }
+
+  /* TODAY LINE */
+  .today-line  { position: absolute; top: 0; bottom: 0; width: 1px; background: #ff444488; pointer-events: none; z-index: 10; }
+  .today-label { position: absolute; top: -16px; font-size: 9px; color: #ff4444; transform: translateX(-50%); white-space: nowrap; }
+  #drag-tip { position:fixed; z-index:999; background:#1e1e2e; color:#ccc; font-size:11px; padding:3px 8px; border-radius:4px; pointer-events:none; border:1px solid #333; display:none; }
+
+  /* EVENTS LIST */
+  .month-group { margin-bottom: 4px; }
+  .month-header { font-size: 11px; font-weight: 600; color: #555; padding: 5px 0 3px; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none; }
+  .month-header:hover { color: #888; }
+  .month-header .arrow { font-size: 9px; transition: transform 0.15s; }
+  .month-header.collapsed .arrow { transform: rotate(-90deg); }
+  .month-events.hidden { display: none; }
+
+  .event-row { display: flex; align-items: flex-start; padding: 4px 0 4px 6px; border-left: 2px solid transparent; cursor: pointer; border-radius: 0 4px 4px 0; gap: 8px; }
+  .event-row:hover { background: #161616; border-left-color: #2a2a2a; }
+  .event-row.selected { background: #1a1a2e; border-left-color: #4a6fa5; }
+  .event-date { font-size: 11px; color: #444; width: 56px; flex-shrink: 0; padding-top: 1px; line-height: 1.3; }
+  .event-dot  { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .event-content { flex: 1; min-width: 0; }
+  .event-name { font-size: 13px; color: #ccc; line-height: 1.3; }
+  .event-name.is-milestone::before { content: "◆ "; font-size: 10px; opacity: 0.8; }
+  .event-meta { font-size: 11px; color: #444; margin-top: 1px; }
+
+  /* TODAY IN EVENTS */
+  .today-events-marker { display: flex; align-items: center; gap: 8px; padding: 3px 0 3px 6px; margin: 2px 0; pointer-events: none; }
+  .today-events-line-el { flex: 1; height: 1px; background: #ff4444; }
+  .today-events-label   { font-size: 10px; color: #ff4444; font-weight: 600; letter-spacing: 0.5px; white-space: nowrap; }
+
+  /* LEGEND */
+  .phase-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
+  .legend-item  { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #555; }
+  .legend-dot   { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* COLOR SWATCHES */
+  .color-swatches { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .color-swatch { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.12s; flex-shrink: 0; }
+  .color-swatch:hover { transform: scale(1.15); }
+  .color-swatch.active { border-color: #fff; }
+  .color-swatch-reset { background: transparent; border: 1px solid #2a2a2a; color: #555; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-family: inherit; line-height: 1; }
+  .color-swatch-reset:hover { color: #aaa; border-color: #555; }
+  .color-swatch-reset.active { border-color: #4a6fa5; color: #4a6fa5; }
+
+  /* RIGHT PANEL */
+  .detail-panel { padding: 16px; overflow-y: auto; }
+  .detail-empty { color: #333; font-size: 13px; margin-top: 40px; text-align: center; }
+  .detail-form  { display: flex; flex-direction: column; gap: 12px; }
+  .form-group   { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 11px; color: #555; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+  .form-group input, .form-group textarea { background: #161616; border: 1px solid #2a2a2a; color: #ddd; padding: 7px 10px; border-radius: 5px; font-size: 13px; font-family: inherit; resize: vertical; }
+  .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #4a6fa5; }
+  .form-group textarea { min-height: 56px; }
+  .form-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .form-check input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color: #4a6fa5; }
+  .form-check span { font-size: 13px; color: #aaa; }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+  .btn { padding: 7px 14px; border-radius: 5px; border: none; cursor: pointer; font-size: 13px; font-family: inherit; font-weight: 500; }
+  .btn-primary { background: #4a6fa5; color: #fff; }
+  .btn-primary:hover { background: #5a7fb5; }
+  .btn-danger { background: transparent; color: #c0392b; border: 1px solid #3a1a1a; }
+  .btn-danger:hover { background: #1a0808; }
+  .btn-ghost { background: transparent; color: #555; border: 1px solid #2a2a2a; }
+  .btn-ghost:hover { background: #161616; color: #aaa; }
+
+  .add-btn { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px dashed #2a2a2a; color: #444; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; font-family: inherit; }
+  .add-btn:hover { border-color: #4a6fa5; color: #4a6fa5; }
+  .phase-tag { display: inline-flex; align-items: center; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+
+  /* BLOCK LIST */
+  .block-list { display: flex; flex-direction: column; gap: 5px; }
+  .block-row  { display: flex; align-items: center; gap: 5px; background: #161616; border: 1px solid #2a2a2a; border-radius: 5px; padding: 5px 8px; }
+  .block-row input[type=date] { background: transparent; border: none; color: #ddd; font-size: 12px; font-family: inherit; padding: 0; flex: 1; min-width: 0; }
+  .block-row input[type=date]:focus { outline: none; }
+  .block-row .sep { color: #333; font-size: 11px; flex-shrink: 0; }
+  .block-del { background: transparent; border: none; color: #444; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
+  .block-del:hover { color: #c0392b; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #0f0f13; }
+  ::-webkit-scrollbar-thumb { background: #222; border-radius: 3px; }
+
+  /* PRINT */
+  @media print {
+    body { background: #fff; color: #000; }
+    .main { display: block; height: auto; }
+    .detail-panel { display: none; }
+    .gantt-panel { border: none; overflow: visible; }
+    .gantt-top { padding: 0; }
+    .gantt-events-scroll { overflow: visible; }
+    .hdr-actions, .phase-header button, .events-header button, .add-btn { display: none !important; }
+    header { border-bottom: 2px solid #000; padding: 8px 0; }
+    .hdr-title { color: #000; font-size: 18px; }
+    .hdr-sub   { color: #444; }
+    .year-cell, .unit-cell { color: #666; border-color: #ccc; }
+    .unit-ruler { border-color: #999; }
+    .gantt-track { background: #eee; }
+    .gantt-label { color: #333; }
+    .drag-handle { display: none; }
+    .today-line { background: #ff0000; }
+    .today-label { color: #ff0000; }
+    .event-name { color: #000; }
+    .event-date, .event-meta { color: #666; }
+    .month-header { color: #333; }
+    .today-events-label { color: #ff0000; }
+    .today-events-line-el { background: #ff0000; }
+    .phase-legend { display: flex; }
+    .legend-item { color: #333; }
+  }
+</style>
+</head>
+<body class="view-mode">
+
+<div id="loading-screen">
+  <div class="spin"></div>
+  <p>Načítám data…</p>
+</div>
+
+<header>
+  <div class="hdr-titles">
+    <div class="hdr-title" id="hdr-title"></div>
+    <div class="hdr-sub"   id="hdr-sub"></div>
+  </div>
+  <div class="hdr-actions">
+    <span class="view-badge" id="viewBadge">👁 Náhled</span>
+    <button class="hdr-btn edit-only" onclick="exportData()" title="Stáhnout zálohu JSON">⬇ Záloha</button>
+    <label class="hdr-btn edit-only" title="Načíst zálohu JSON" style="cursor:pointer">
+      ⬆ Obnovit<input type="file" accept=".json" onchange="importData(this)" style="display:none">
+    </label>
+    <div class="hdr-sep"></div>
+    <button class="hdr-btn" onclick="window.print()" title="Tisk / PDF">🖨 Tisk</button>
+    <button class="hdr-btn" id="lockBtn" onclick="toggleEditorMode()" title="Přihlásit jako editor">🔒 Editor</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="gantt-panel">
+    <div class="gantt-top">
+
+      <div class="phase-header">
+        <div class="section-title" style="margin-bottom:0">Fáze projektu</div>
+        <button class="add-btn edit-only" id="addPhaseBtn" style="padding:3px 8px">+ Přidat fázi</button>
+      </div>
+
+      <div class="phase-legend" id="phaseLegend"></div>
+
+      <div class="gantt-wrap" id="ganttWrap">
+        <div class="year-ruler" id="yearRuler"></div>
+        <div class="unit-ruler" id="unitRuler"></div>
+        <div class="gantt-rows" id="ganttRows"></div>
+      </div>
+
+      <div class="events-header">
+        <div class="section-title">Události</div>
+        <input class="filter-input" id="filterInput" placeholder="Hledat…" oninput="onFilter(this.value)">
+        <button class="filter-clear" id="filterClear" onclick="clearFilter()" style="display:none" title="Vymazat filtr">×</button>
+        <button class="add-btn edit-only" id="addBtn" style="padding:3px 8px;margin-top:0">+ Přidat</button>
+      </div>
+    </div>
+
+    <div class="gantt-events-scroll">
+      <div id="eventsList"></div>
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-empty" id="detailEmpty">Vyberte událost nebo klikněte na + přidat</div>
+    <div id="detailForm" style="display:none"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+
+// ─── FIREBASE ────────────────────────────────────────────────────────────────
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBWdRGOg4UrXkSqN5UrHgDZz-1ESxQG74Y",
+  authDomain: "minut-71b43.firebaseapp.com",
+  projectId: "minut-71b43",
+  storageBucket: "minut-71b43.firebasestorage.app",
+  messagingSenderId: "621247574819",
+  appId: "1:621247574819:web:2c74b6b5c25333af951296"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db    = getFirestore(fbApp);
+const STATE_REF = doc(db, "app", "state");
+
+// ─── HESLO ───────────────────────────────────────────────────────────────────
+
+const EDIT_PASSWORD = "13minut2026";
+let isEditor = sessionStorage.getItem("editor") === "1";
+
+// ─── DEFAULT DATA ────────────────────────────────────────────────────────────
+
+const DEFAULT_PHASES = [
+  { name:"přípravy",        color:"#e8a87c", blocks:[{start:"2026-05-01",end:"2026-11-01"}] },
+  { name:"natáčení",        color:"#e07070", blocks:[{start:"2026-11-02",end:"2026-11-27"}] },
+  { name:"střih",           color:"#6fa5d4", blocks:[{start:"2026-11-30",end:"2027-01-01"}] },
+  { name:"AI postprodukce", color:"#a98fd4", blocks:[{start:"2027-01-18",end:"2027-05-23"}] },
+  { name:"grading",         color:"#6cc89a", blocks:[{start:"2027-05-24",end:"2027-06-06"}] },
+  { name:"zvuk",            color:"#5bc8d4", blocks:[{start:"2027-05-24",end:"2027-06-20"}] },
+];
+
+const DEFAULT_EVENTS = [
+  {id:1,  date:"2026-05-04", name:"Vrací se Braňo",                      who:"",                                    note:""},
+  {id:2,  date:"2026-05-08", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:""},
+  {id:3,  date:"2026-05-11", name:"Tendr kamerman, oslovení architekta", who:"Braňo, Tomáš K.",                     note:""},
+  {id:4,  date:"2026-05-15", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:5,  date:"2026-05-18", name:"Přijíždí Jirka Kilevník do ČR",       who:"",                                    note:""},
+  {id:6,  date:"2026-05-21", name:"Pomocný rež., kostýmní výtvarník",    who:"",                                    note:""},
+  {id:7,  date:"2026-05-22", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:8,  date:"2026-05-28", name:"Předběžný rozpočet",                  who:"Vojta",                               note:""},
+  {id:9,  date:"2026-05-29", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:10, date:"2026-06-01", name:"Scénosled",                           who:"Tomáš G.",                            note:""},
+  {id:11, date:"2026-06-05", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:12, date:"2026-06-12", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30, Teambuilding NOVA"},
+  {id:13, date:"2026-06-15", name:"Obhlídky lokací",                     who:"",                                    note:""},
+  {id:14, date:"2026-06-16", name:"Obhlídky lokací",                     who:"",                                    note:""},
+  {id:15, date:"2026-06-17", name:"Obhlídky lokací",                     who:"",                                    note:""},
+  {id:16, date:"2026-06-18", name:"Jirka K. odjiždí z ČR",              who:"",                                    note:""},
+  {id:17, date:"2026-06-19", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:18, date:"2026-06-26", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:19, date:"2026-07-03", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:20, date:"2026-07-10", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:21, date:"2026-07-17", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:22, date:"2026-07-24", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:23, date:"2026-07-31", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:24, date:"2026-08-07", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:25, date:"2026-08-14", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:26, date:"2026-08-21", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:27, date:"2026-08-28", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:28, date:"2026-09-04", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:29, date:"2026-09-11", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:30, date:"2026-09-18", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:31, date:"2026-09-25", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:32, date:"2026-10-02", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:33, date:"2026-10-09", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:34, date:"2026-10-16", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:35, date:"2026-10-23", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:36, date:"2026-10-30", name:"Pravidelná schůzka",                  who:"Michal, Tomáš, Braňo, Jirka, Vojta", note:"14:00 – 15:30"},
+  {id:37, date:"2027-06-30", name:"Schválení",                           who:"",                                    note:""},
+];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+
+let phases    = [];
+let events    = [];
+let nextId    = 100;
+let projTitle = "13 minut";
+let projSub   = "";
+let filterText       = "";
+let selectedId       = null;
+let selectedPhaseIdx = null;
+let editMode         = false;
+let tempBlocks       = [];
+let dragSrcIdx       = null;
+let dragBarState     = null;
+
+// ─── FIRESTORE ───────────────────────────────────────────────────────────────
+
+function migratePhase(p) {
+  if (!p.blocks) return { name:p.name, color:p.color, blocks:[{start:p.start, end:p.end}] };
+  return p;
+}
+
+async function saveState() {
+  try {
+    await setDoc(STATE_REF, { events, nextId, phases, projTitle, projSub });
+  } catch(e) {
+    console.error("Chyba při ukládání:", e);
+  }
+}
+
+function startListening() {
+  onSnapshot(STATE_REF, (snap) => {
+    document.getElementById("loading-screen").style.display = "none";
+    if (!snap.exists()) {
+      // Firestore je prázdný — nahraj výchozí data
+      events    = DEFAULT_EVENTS.map(e=>({...e}));
+      phases    = DEFAULT_PHASES.map(p=>({...p, blocks:p.blocks.map(b=>({...b}))}));
+      nextId    = 100; projTitle = "13 minut"; projSub = "";
+      if (isEditor) saveState();
+    } else {
+      // Neaktualizuj pokud editor zrovna edituje
+      if (editMode) return;
+      const d = snap.data();
+      events    = d.events    || DEFAULT_EVENTS.map(e=>({...e}));
+      nextId    = d.nextId    || 100;
+      phases    = (d.phases   || DEFAULT_PHASES).map(migratePhase);
+      projTitle = d.projTitle || "13 minut";
+      projSub   = d.projSub   || "";
+    }
+    renderAll();
+    setTimeout(()=>{
+      const m=document.getElementById("today-events-marker");
+      if(m) m.scrollIntoView({behavior:"smooth",block:"center"});
+    },150);
+  }, (err) => {
+    document.getElementById("loading-screen").innerHTML =
+      `<p style="color:#c0392b">Chyba připojení k databázi.<br>${err.message}</p>`;
+  });
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify({ events, nextId, phases, projTitle, projSub }, null, 2)], {type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = (projTitle||"harmonogram").replace(/\s+/g,"-").toLowerCase() + "-zaloha.json";
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+function importData(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const d = JSON.parse(e.target.result);
+      if (!d.events || !d.phases) { alert("Neplatný soubor zálohy."); return; }
+      events    = d.events;
+      nextId    = d.nextId    || 100;
+      phases    = d.phases.map(migratePhase);
+      projTitle = d.projTitle || projTitle;
+      projSub   = d.projSub   || "";
+      await saveState(); renderAll();
+      alert("Data obnovena.");
+    } catch { alert("Chyba při čtení souboru."); }
+  };
+  reader.readAsText(file);
+  input.value = "";
+}
+
+// ─── EDITOR MODE ─────────────────────────────────────────────────────────────
+
+function applyEditorMode() {
+  const btn = document.getElementById("lockBtn");
+  const badge = document.getElementById("viewBadge");
+  if (isEditor) {
+    document.body.classList.remove("view-mode");
+    btn.textContent = "🔓 Editor";
+    btn.classList.add("editor-active");
+    badge.style.display = "none";
+    document.getElementById("hdr-title").style.cursor = "text";
+    document.getElementById("hdr-sub").style.cursor = "text";
+  } else {
+    document.body.classList.add("view-mode");
+    btn.textContent = "🔒 Editor";
+    btn.classList.remove("editor-active");
+    badge.style.display = "";
+    editMode = false;
+    renderDetail();
+  }
+}
+
+function toggleEditorMode() {
+  if (isEditor) {
+    isEditor = false;
+    sessionStorage.removeItem("editor");
+    applyEditorMode();
+  } else {
+    const pw = prompt("Zadejte heslo editora:");
+    if (pw === null) return;
+    if (pw === EDIT_PASSWORD) {
+      isEditor = true;
+      sessionStorage.setItem("editor", "1");
+      applyEditorMode();
+    } else {
+      alert("Nesprávné heslo.");
+    }
+  }
+}
+
+// ─── HELPERS ────────────────────────────────────────────────────────────────
+
+function dateToD(s) { return new Date(s + "T00:00:00"); }
+
+function getTimelineBounds() {
+  const all = phases.flatMap(p => p.blocks.flatMap(b => [b.start, b.end]));
+  if (!all.length) { const s=new Date(), e=new Date(); e.setFullYear(e.getFullYear()+1); return {start:s,end:e,total:365}; }
+  const min = all.reduce((a,b)=>a<b?a:b);
+  const max = all.reduce((a,b)=>a>b?a:b);
+  const start = dateToD(min);
+  const end   = dateToD(max); end.setMonth(end.getMonth()+1);
+  return { start, end, total:(end-start)/86400000 };
+}
+
+function pct(dateStr) {
+  const {start,total} = getTimelineBounds();
+  return Math.max(0, Math.min(100, (dateToD(dateStr)-start)/86400000/total*100));
+}
+
+function formatDateCZ(s) { return dateToD(s).toLocaleDateString("cs-CZ",{day:"numeric",month:"numeric"}); }
+function formatMonthCZ(y,m) { return new Date(y,m,1).toLocaleDateString("cs-CZ",{month:"long",year:"numeric"}); }
+
+function getPhaseForDate(d) {
+  for (const p of phases) for (const b of p.blocks) if (d>=b.start&&d<=b.end) return p;
+  return null;
+}
+function eventDotColor(d) { const p=getPhaseForDate(d); return p?p.color:"#444"; }
+function addDays(s, n) { const d=dateToD(s); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+
+// ─── RENDER ─────────────────────────────────────────────────────────────────
+
+function renderHeader() {
+  const titleEl = document.getElementById("hdr-title");
+  const subEl   = document.getElementById("hdr-sub");
+  if (!titleEl.querySelector("input")) titleEl.textContent = projTitle;
+  if (!subEl.querySelector("input"))   { subEl.textContent = projSub; subEl.classList.toggle("empty",!projSub); }
+  document.title = projTitle + " — Harmonogram";
+}
+
+function makeEditable(el, isTitle) {
+  if (!isEditor) return;
+  if (el.querySelector("input")) return;
+  const cur = isTitle ? projTitle : projSub;
+  el.innerHTML = "";
+  const inp = document.createElement("input");
+  inp.className = "hdr-input "+(isTitle?"title-input":"sub-input");
+  inp.value = cur; inp.placeholder = isTitle ? "Název projektu" : "Podnadpis…";
+  el.appendChild(inp); inp.focus(); inp.select();
+  const commit = () => {
+    const val = inp.value.trim();
+    if (isTitle) projTitle = val||"Projekt"; else projSub = val;
+    saveState(); renderHeader();
+  };
+  inp.addEventListener("blur", commit);
+  inp.addEventListener("keydown", e => { if(e.key==="Enter") inp.blur(); if(e.key==="Escape"){inp.value=cur;inp.blur();} });
+}
+
+document.getElementById("hdr-title").addEventListener("click", () => makeEditable(document.getElementById("hdr-title"),true));
+document.getElementById("hdr-sub").addEventListener("click",   () => makeEditable(document.getElementById("hdr-sub"),false));
+
+function renderLegend() {
+  document.getElementById("phaseLegend").innerHTML = phases.map(p=>
+    `<div class="legend-item"><div class="legend-dot" style="background:${p.color}"></div>${escHtml(p.name)}</div>`
+  ).join("");
+}
+
+function renderGantt() {
+  const {start:tlStart, end:tlEnd, total:tlTotal} = getTimelineBounds();
+
+  // ── Year ruler ──
+  const yearEl = document.getElementById("yearRuler"); yearEl.innerHTML = "";
+  const months = [];
+  { let c=new Date(tlStart.getFullYear(),tlStart.getMonth(),1); while(c<=tlEnd){months.push(new Date(c));c.setMonth(c.getMonth()+1);} }
+  const byYear = {};
+  months.forEach(m => { const y=m.getFullYear(); (byYear[y]=byYear[y]||[]).push(m); });
+  Object.entries(byYear).forEach(([y,ms]) => {
+    const fs = new Date(ms[0].getFullYear(),ms[0].getMonth(),1);
+    const le = new Date(ms[ms.length-1].getFullYear(),ms[ms.length-1].getMonth()+1,0);
+    const s=Math.max(0,(fs-tlStart)/86400000/tlTotal*100);
+    const e=Math.min(100,(le-tlStart)/86400000/tlTotal*100);
+    const cell = document.createElement("div"); cell.className="year-cell"; cell.style.width=(e-s)+"%"; cell.textContent=y;
+    yearEl.appendChild(cell);
+  });
+
+  // ── Unit ruler ──
+  const unitEl = document.getElementById("unitRuler"); unitEl.innerHTML = "";
+  months.forEach(m => {
+    const ms=new Date(m.getFullYear(),m.getMonth(),1);
+    const me=new Date(m.getFullYear(),m.getMonth()+1,0);
+    const s=Math.max(0,(ms-tlStart)/86400000/tlTotal*100);
+    const e=Math.min(100,(me-tlStart)/86400000/tlTotal*100);
+    const cell=document.createElement("div"); cell.className="unit-cell"; cell.style.width=(e-s)+"%";
+    cell.textContent=m.toLocaleDateString("cs-CZ",{month:"short"}).replace(".","");
+    unitEl.appendChild(cell);
+  });
+
+  // ── Rows ──
+  const rowsEl = document.getElementById("ganttRows"); rowsEl.innerHTML = "";
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todayPct = pct(todayStr);
+  const tl = document.createElement("div"); tl.className="today-line"; tl.style.left=todayPct+"%";
+  tl.innerHTML=`<div class="today-label">dnes</div>`; rowsEl.appendChild(tl);
+
+  phases.forEach((p, idx) => {
+    const row = document.createElement("div");
+    row.className = "gantt-row"+(idx===selectedPhaseIdx?" phase-selected":"");
+    row.dataset.idx = idx;
+    if (isEditor) row.draggable = true;
+
+    const handle = document.createElement("div"); handle.className="drag-handle"; handle.textContent="⠿"; handle.title="Přetažením změnit pořadí";
+    const label  = document.createElement("div"); label.className="gantt-label"; label.textContent=p.name;
+    label.onclick=()=>{ if(isEditor) selectPhase(idx); };
+    const track  = document.createElement("div"); track.className="gantt-track";
+
+    p.blocks.forEach((b,bIdx) => {
+      const bar = document.createElement("div");
+      bar.className = "gantt-bar"+(dragBarState&&dragBarState.phaseIdx===idx&&dragBarState.blockIdx===bIdx?" bar-dragging":"");
+      const s=pct(b.start), e=pct(b.end);
+      bar.style.left=s+"%"; bar.style.width=(e-s)+"%"; bar.style.background=p.color; bar.style.opacity="0.85";
+      bar.setAttribute("data-ph",idx); bar.setAttribute("data-bl",bIdx);
+      if (isEditor) {
+        bar.addEventListener("dragstart",ev=>ev.preventDefault());
+        bar.addEventListener("mousemove",ev=>{if(dragBarState)return;const ox=ev.offsetX,bw=bar.offsetWidth;bar.style.cursor=(ox<7||ox>bw-7)?"ew-resize":"grab";});
+        bar.addEventListener("mousedown",ev=>{
+          ev.preventDefault(); ev.stopPropagation();
+          const ox=ev.offsetX,bw=bar.offsetWidth;
+          const type=ox<7?"resize-left":ox>bw-7?"resize-right":"move";
+          dragBarState={type,phaseIdx:idx,blockIdx:bIdx,startX:ev.clientX,origStart:b.start,origEnd:b.end,trackWidth:track.getBoundingClientRect().width,didMove:false};
+          document.body.style.cursor=type==="move"?"grabbing":"ew-resize"; document.body.style.userSelect="none";
+        });
+      } else {
+        bar.style.cursor = "default";
+      }
+      bar.addEventListener("click",ev=>{if(dragBarState?.didMove)return; if(isEditor) selectPhase(idx);});
+      track.appendChild(bar);
+    });
+
+    row.appendChild(handle); row.appendChild(label); row.appendChild(track);
+
+    if (isEditor) {
+      row.addEventListener("dragstart",e=>{dragSrcIdx=idx;row.classList.add("dragging");e.dataTransfer.effectAllowed="move";});
+      row.addEventListener("dragend",()=>{row.classList.remove("dragging");document.querySelectorAll(".gantt-row").forEach(r=>r.classList.remove("drag-over-top","drag-over-bottom"));});
+      row.addEventListener("dragover",e=>{e.preventDefault();if(dragSrcIdx===idx)return;const rect=row.getBoundingClientRect(),mid=rect.top+rect.height/2;row.classList.toggle("drag-over-top",e.clientY<mid);row.classList.toggle("drag-over-bottom",e.clientY>=mid);});
+      row.addEventListener("dragleave",()=>row.classList.remove("drag-over-top","drag-over-bottom"));
+      row.addEventListener("drop",e=>{
+        e.preventDefault(); if(dragSrcIdx===null||dragSrcIdx===idx)return;
+        const before=e.clientY<row.getBoundingClientRect().top+row.getBoundingClientRect().height/2;
+        const moved=phases.splice(dragSrcIdx,1)[0];
+        let t=idx; if(dragSrcIdx<idx)t=before?idx-1:idx; else t=before?idx:idx+1;
+        phases.splice(t,0,moved); if(selectedPhaseIdx===dragSrcIdx)selectedPhaseIdx=t;
+        dragSrcIdx=null; saveState(); renderAll();
+      });
+    }
+
+    rowsEl.appendChild(row);
+  });
+
+  // ── Milestone row ──
+  const milestones = events.filter(ev => ev.milestone);
+  if (milestones.length) {
+    const mRow = document.createElement("div"); mRow.className="gantt-row";
+    const mHandle = document.createElement("div"); mHandle.className="drag-handle";
+    const mLabel  = document.createElement("div"); mLabel.className="gantt-label"; mLabel.textContent="milníky"; mLabel.style.color="#555";
+    const mTrack  = document.createElement("div"); mTrack.className="milestone-track";
+    milestones.forEach(ev => {
+      const diamond = document.createElement("div"); diamond.className="milestone-diamond";
+      diamond.style.left=pct(ev.date)+"%"; diamond.style.background=ev.color||"#e0c040";
+      diamond.title=`${ev.name} (${formatDateCZ(ev.date)})`;
+      diamond.onclick=()=>selectEvent(ev.id);
+      mTrack.appendChild(diamond);
+    });
+    mRow.appendChild(mHandle); mRow.appendChild(mLabel); mRow.appendChild(mTrack);
+    rowsEl.appendChild(mRow);
+  }
+}
+
+function renderEvents() {
+  const el = document.getElementById("eventsList"); el.innerHTML="";
+  const today = new Date().toISOString().slice(0,10);
+  const ft = filterText.toLowerCase();
+  const sorted = [...events].sort((a,b)=>a.date.localeCompare(b.date))
+    .filter(ev => !ft || ev.name.toLowerCase().includes(ft) || (ev.who||"").toLowerCase().includes(ft) || (ev.note||"").toLowerCase().includes(ft));
+
+  const groups = {};
+  sorted.forEach(ev => { const k=ev.date.slice(0,7); (groups[k]=groups[k]||[]).push(ev); });
+
+  let todayInserted = false;
+
+  Object.entries(groups).forEach(([ym,evs]) => {
+    const [y,m] = ym.split("-").map(Number);
+    const grp = document.createElement("div"); grp.className="month-group";
+    const hdr = document.createElement("div"); hdr.className="month-header";
+    hdr.innerHTML=`<span class="arrow">▾</span> ${formatMonthCZ(y,m-1)}`;
+    hdr.onclick=()=>{hdr.classList.toggle("collapsed");grp.querySelector(".month-events").classList.toggle("hidden");};
+    const list = document.createElement("div"); list.className="month-events";
+
+    evs.forEach(ev => {
+      if (!todayInserted && ev.date > today) {
+        todayInserted=true;
+        const mk=document.createElement("div"); mk.id="today-events-marker"; mk.className="today-events-marker";
+        mk.innerHTML=`<div class="today-events-label">DNES</div><div class="today-events-line-el"></div>`;
+        list.appendChild(mk);
+      }
+      const row = document.createElement("div");
+      row.className="event-row"+(ev.id===selectedId?" selected":"");
+      row.dataset.id=ev.id;
+      const color = eventDotColor(ev.date);
+      const dateLabel = ev.endDate ? `${formatDateCZ(ev.date)}<br>${formatDateCZ(ev.endDate)}` : formatDateCZ(ev.date);
+      row.innerHTML=`
+        <div class="event-date">${dateLabel}</div>
+        <div class="event-dot" style="background:${color};${ev.milestone?'border-radius:2px;transform:rotate(45deg)':''}"></div>
+        <div class="event-content">
+          <div class="event-name${ev.milestone?' is-milestone':''}" style="${ev.color?`color:${ev.color}`:''}">` +
+          escHtml(ev.name) + `</div>
+          ${ev.who||ev.note?`<div class="event-meta">${escHtml([ev.who,ev.note].filter(Boolean).join(" · "))}</div>`:""}
+        </div>`;
+      row.onclick=()=>selectEvent(ev.id);
+      list.appendChild(row);
+    });
+    grp.appendChild(hdr); grp.appendChild(list); el.appendChild(grp);
+  });
+
+  if (!todayInserted && !ft) {
+    const mk=document.createElement("div"); mk.id="today-events-marker"; mk.className="today-events-marker";
+    mk.innerHTML=`<div class="today-events-label">DNES</div><div class="today-events-line-el"></div>`;
+    el.appendChild(mk);
+  }
+
+  if (ft && sorted.length===0) {
+    const empty=document.createElement("div"); empty.style.cssText="color:#444;font-size:12px;padding:12px 0"; empty.textContent="Žádné výsledky.";
+    el.appendChild(empty);
+  }
+}
+
+function renderBlockList() {
+  const c=document.getElementById("blocks-list"); if(!c)return; c.innerHTML="";
+  tempBlocks.forEach((b,i) => {
+    const row=document.createElement("div"); row.className="block-row";
+    row.innerHTML=`<input type="date" class="b-start" value="${b.start}"><span class="sep">–</span><input type="date" class="b-end" value="${b.end}"><button class="block-del" onclick="removeBlock(${i})">×</button>`;
+    c.appendChild(row);
+  });
+}
+
+function renderDetail() {
+  const empty=document.getElementById("detailEmpty"), form=document.getElementById("detailForm");
+  if (!editMode&&selectedId===null&&selectedPhaseIdx===null) { empty.style.display="block";form.style.display="none"; return; }
+  if (!isEditor && editMode) { empty.style.display="block";form.style.display="none"; return; }
+  empty.style.display="none"; form.style.display="block";
+
+  if (editMode==="edit-phase"||editMode==="new-phase") {
+    const p = editMode==="new-phase" ? {name:"",color:"#7ecba1",blocks:[{start:"",end:""}]} : phases[selectedPhaseIdx];
+    if (!p) { empty.style.display="block";form.style.display="none"; return; }
+    form.innerHTML=`
+      <div class="section-title" style="margin-bottom:12px">${editMode==="new-phase"?"Nová fáze":"Editace fáze"}</div>
+      <div class="detail-form">
+        <div class="form-group"><label>Název</label><input type="text" id="fp-name" value="${escAttr(p.name)}" placeholder="např. přípravy"></div>
+        <div class="form-group">
+          <label>Barva</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="color" id="fp-color" value="${p.color}" style="width:44px;height:32px;padding:2px;background:#161616;border:1px solid #2a2a2a;border-radius:5px;cursor:pointer">
+            <span id="fp-color-val" style="font-size:12px;color:#555">${p.color}</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Časové bloky</label>
+          <div id="blocks-list" class="block-list"></div>
+          <button class="add-btn" onclick="addBlock()" style="margin-top:5px;padding:3px 8px">+ Přidat blok</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="savePhase(${selectedPhaseIdx})">Uložit</button>
+          <button class="btn btn-ghost" onclick="cancelEdit()">Zrušit</button>
+          ${editMode==="edit-phase"?`<button class="btn btn-danger" onclick="deletePhase(${selectedPhaseIdx})">Smazat</button>`:""}
+        </div>
+      </div>`;
+    document.getElementById("fp-color").addEventListener("input",e=>document.getElementById("fp-color-val").textContent=e.target.value);
+    renderBlockList(); return;
+  }
+
+  const ev = editMode==="new-event"
+    ? {id:null,date:new Date().toISOString().slice(0,10),endDate:"",name:"",who:"",note:"",color:"",milestone:false}
+    : events.find(e=>e.id===selectedId);
+  if (!ev) { empty.style.display="block";form.style.display="none"; return; }
+
+  const phase=getPhaseForDate(ev.date);
+  const ptag=phase?`<span class="phase-tag" style="background:${phase.color}22;color:${phase.color}">${phase.name}</span>`:"";
+  const COLORS=['','#e05555','#e89040','#c8b030','#4ab870','#4a8fd4','#9b6fd4'];
+
+  if (!isEditor) {
+    form.innerHTML=`
+      <div class="section-title" style="margin-bottom:12px">Detail události ${ptag}</div>
+      <div class="detail-form">
+        <div style="font-size:14px;color:#ddd;line-height:1.6">
+          <div style="margin-bottom:6px">${escHtml(ev.name)}</div>
+          ${ev.endDate?`<div style="font-size:12px;color:#555">${formatDateCZ(ev.date)} – ${formatDateCZ(ev.endDate)}</div>`:`<div style="font-size:12px;color:#555">${formatDateCZ(ev.date)}</div>`}
+          ${ev.who?`<div style="font-size:12px;color:#555;margin-top:4px">${escHtml(ev.who)}</div>`:""}
+          ${ev.note?`<div style="font-size:12px;color:#444;margin-top:4px">${escHtml(ev.note)}</div>`:""}
+        </div>
+        <div class="btn-row"><button class="btn btn-ghost" onclick="cancelEdit()">Zavřít</button></div>
+      </div>`;
+    return;
+  }
+
+  form.innerHTML=`
+    <div class="section-title" style="margin-bottom:12px">${editMode==="new-event"?"Nová událost":"Detail události"} ${ptag}</div>
+    <div class="detail-form">
+      <div class="form-group"><label>Začátek</label><input type="date" id="f-date" value="${ev.date}"></div>
+      <div class="form-group"><label>Konec <span style="color:#333;font-weight:400;text-transform:none">(volitelné)</span></label><input type="date" id="f-enddate" value="${ev.endDate||''}"></div>
+      <div class="form-group"><label>Název</label><input type="text" id="f-name" value="${escAttr(ev.name)}" placeholder="Název události"></div>
+      <div class="form-group"><label>Kdo</label><input type="text" id="f-who" value="${escAttr(ev.who)}" placeholder="Jméno / tým"></div>
+      <div class="form-group">
+        <label>Barva názvu</label>
+        <div class="color-swatches" id="f-color-swatches">
+          ${COLORS.map(c=>c===''
+            ?`<button type="button" class="color-swatch-reset${!ev.color?' active':''}" data-color="" onclick="pickColor(this)">× výchozí</button>`
+            :`<div class="color-swatch${ev.color===c?' active':''}" data-color="${c}" style="background:${c}" onclick="pickColor(this)"></div>`
+          ).join('')}
+        </div>
+      </div>
+      <div class="form-group"><label>Poznámka</label><textarea id="f-note" placeholder="Volitelná poznámka">${escHtml(ev.note)}</textarea></div>
+      <label class="form-check">
+        <input type="checkbox" id="f-milestone" ${ev.milestone?'checked':''}>
+        <span>Milník — zobrazit jako ◆ na Gantt diagramu</span>
+      </label>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveEvent(${ev.id})">Uložit</button>
+        <button class="btn btn-ghost" onclick="cancelEdit()">Zrušit</button>
+        ${editMode!=="new-event"?`<button class="btn btn-danger" onclick="deleteEvent(${ev.id})">Smazat</button>`:""}
+      </div>
+    </div>`;
+
+  document.getElementById("f-date").addEventListener("change",()=>{
+    const d=document.getElementById("f-date").value, p2=getPhaseForDate(d);
+    const tag=form.querySelector(".phase-tag");
+    if(p2){if(tag){tag.style.background=p2.color+"22";tag.style.color=p2.color;tag.textContent=p2.name;}else form.querySelector(".section-title").insertAdjacentHTML("beforeend",`<span class="phase-tag" style="background:${p2.color}22;color:${p2.color}">${p2.name}</span>`);}
+    else if(tag) tag.remove();
+  });
+}
+
+function renderAll() {
+  renderHeader(); renderLegend(); renderGantt(); renderEvents(); renderDetail();
+}
+
+// ─── FILTER ──────────────────────────────────────────────────────────────────
+
+function onFilter(val) {
+  filterText = val;
+  document.getElementById("filterClear").style.display = val ? "block" : "none";
+  renderEvents();
+}
+function clearFilter() {
+  filterText = ""; document.getElementById("filterInput").value = "";
+  document.getElementById("filterClear").style.display = "none";
+  renderEvents();
+}
+
+// ─── BLOCK EDITOR ────────────────────────────────────────────────────────────
+
+function syncTempBlocks() {
+  document.querySelectorAll("#blocks-list .block-row").forEach((row,i)=>{
+    if(tempBlocks[i]){tempBlocks[i].start=row.querySelector(".b-start").value;tempBlocks[i].end=row.querySelector(".b-end").value;}
+  });
+}
+function addBlock() { syncTempBlocks(); tempBlocks.push({start:"",end:""}); renderBlockList(); }
+function removeBlock(i) { syncTempBlocks(); if(tempBlocks.length<=1)return; tempBlocks.splice(i,1); renderBlockList(); }
+
+// ─── ACTIONS ─────────────────────────────────────────────────────────────────
+
+function selectEvent(id) { selectedId=id; selectedPhaseIdx=null; editMode="edit-event"; renderGantt(); renderEvents(); renderDetail(); }
+function selectPhase(idx) { if(!isEditor)return; selectedPhaseIdx=idx; selectedId=null; editMode="edit-phase"; tempBlocks=phases[idx].blocks.map(b=>({...b})); renderGantt(); renderDetail(); }
+function cancelEdit() { editMode=false; selectedId=null; renderGantt(); renderDetail(); }
+
+function saveEvent(id) {
+  const date=document.getElementById("f-date").value;
+  const endDate=document.getElementById("f-enddate").value;
+  const name=document.getElementById("f-name").value.trim();
+  const who=document.getElementById("f-who").value.trim();
+  const note=document.getElementById("f-note").value.trim();
+  const milestone=document.getElementById("f-milestone").checked;
+  if(!name){document.getElementById("f-name").focus();return;}
+  const endVal=(endDate&&endDate>date)?endDate:"";
+  const colorEl=document.querySelector("#f-color-swatches .active");
+  const color=colorEl?colorEl.dataset.color:"";
+  if(editMode==="new-event"){const ev={id:nextId++,date,endDate:endVal,name,color,who,note,milestone};events.push(ev);selectedId=ev.id;}
+  else{const ev=events.find(e=>e.id===id);if(ev)Object.assign(ev,{date,endDate:endVal,name,color,who,note,milestone});}
+  editMode="edit-event"; saveState(); renderGantt(); renderEvents(); renderDetail();
+}
+
+function deleteEvent(id) {
+  if(!confirm("Smazat tuto událost?"))return;
+  events=events.filter(e=>e.id!==id); selectedId=null; editMode=false;
+  saveState(); renderGantt(); renderEvents(); renderDetail();
+}
+
+function savePhase(idx) {
+  syncTempBlocks();
+  const name=document.getElementById("fp-name").value.trim();
+  const color=document.getElementById("fp-color").value;
+  const blocks=tempBlocks.filter(b=>b.start&&b.end);
+  if(!name||!blocks.length)return;
+  if(editMode==="new-phase"){phases.push({name,color,blocks});selectedPhaseIdx=phases.length-1;}
+  else phases[idx]={name,color,blocks};
+  editMode="edit-phase"; saveState(); renderAll();
+}
+
+function deletePhase(idx) {
+  if(!confirm("Smazat tuto fázi?"))return;
+  phases.splice(idx,1); selectedPhaseIdx=null; editMode=false; saveState(); renderAll();
+}
+
+function pickColor(el) {
+  document.querySelectorAll("#f-color-swatches .active").forEach(e=>e.classList.remove("active"));
+  el.classList.add("active");
+}
+
+// ─── BAR DRAG ────────────────────────────────────────────────────────────────
+
+function showDragTip(x,y,text) {
+  let tip=document.getElementById("drag-tip");
+  if(!tip){tip=document.createElement("div");tip.id="drag-tip";document.body.appendChild(tip);}
+  tip.textContent=text; tip.style.left=(x+14)+"px"; tip.style.top=(y-28)+"px"; tip.style.display="block";
+}
+
+document.addEventListener("mousemove",ev=>{
+  if(!dragBarState)return;
+  const{type,phaseIdx,blockIdx,startX,origStart,origEnd,trackWidth}=dragBarState;
+  const{total}=getTimelineBounds();
+  const deltaDays=Math.round((ev.clientX-startX)*total/trackWidth);
+  if(Math.abs(ev.clientX-startX)>3)dragBarState.didMove=true;
+  const block=phases[phaseIdx].blocks[blockIdx];
+  if(type==="move"){block.start=addDays(origStart,deltaDays);block.end=addDays(origEnd,deltaDays);}
+  else if(type==="resize-left"){const ns=addDays(origStart,deltaDays);if(ns<origEnd)block.start=ns;}
+  else{const ne=addDays(origEnd,deltaDays);if(ne>origStart)block.end=ne;}
+  const barEl=document.querySelector(`.gantt-bar[data-ph="${phaseIdx}"][data-bl="${blockIdx}"]`);
+  if(barEl){barEl.style.left=pct(block.start)+"%";barEl.style.width=Math.max(0.5,pct(block.end)-pct(block.start))+"%";}
+  showDragTip(ev.clientX,ev.clientY,`${formatDateCZ(block.start)} – ${formatDateCZ(block.end)}`);
+});
+
+document.addEventListener("mouseup",()=>{
+  if(!dragBarState)return;
+  const tip=document.getElementById("drag-tip"); if(tip)tip.style.display="none";
+  document.body.style.cursor=""; document.body.style.userSelect="";
+  if(dragBarState.didMove){saveState();renderGantt();if(selectedPhaseIdx===dragBarState.phaseIdx)renderDetail();}
+  dragBarState=null;
+});
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+
+function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function escAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;");}
+
+// ─── EXPOSE GLOBALS (onclick attrs) ──────────────────────────────────────────
+
+window.exportData      = exportData;
+window.importData      = importData;
+window.toggleEditorMode= toggleEditorMode;
+window.onFilter        = onFilter;
+window.clearFilter     = clearFilter;
+window.addBlock        = addBlock;
+window.removeBlock     = removeBlock;
+window.savePhase       = savePhase;
+window.cancelEdit      = cancelEdit;
+window.deletePhase     = deletePhase;
+window.saveEvent       = saveEvent;
+window.deleteEvent     = deleteEvent;
+window.pickColor       = pickColor;
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+
+document.getElementById("addBtn").addEventListener("click",()=>{
+  if(!isEditor)return;
+  selectedId=null;selectedPhaseIdx=null;editMode="new-event";renderGantt();renderEvents();renderDetail();
+});
+document.getElementById("addPhaseBtn").addEventListener("click",()=>{
+  if(!isEditor)return;
+  selectedPhaseIdx=null;selectedId=null;editMode="new-phase";tempBlocks=[{start:"",end:""}];renderGantt();renderDetail();
+});
+
+applyEditorMode();
+startListening();
+</script>
+</body>
+</html>
