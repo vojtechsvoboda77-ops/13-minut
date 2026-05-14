@@ -717,7 +717,8 @@ function renderDetail() {
           <div style="width:14px;height:14px;border-radius:3px;background:${p.color};flex-shrink:0"></div>
           <div style="font-size:15px;color:#ddd;font-weight:600">${escHtml(p.name)}</div>
         </div>
-        ${p.blocks.map(b=>`<div style="font-size:12px;color:#555;padding:3px 0">${formatDateCZ(b.start)} – ${formatDateCZ(b.end)}</div>`).join("")}
+        ${p.blocks.map(b=>`<div style="font-size:12px;color:#444;padding:3px 0">${formatDateCZ(b.start)} – ${formatDateCZ(b.end)}</div>`).join("")}
+        ${p.note?`<div style="font-size:12px;color:#444;margin-top:8px">📝 ${escHtml(p.note)}</div>`:""}
         <div class="btn-row" style="margin-top:12px"><button class="btn btn-ghost" onclick="cancelEdit()">Zavřít</button></div>
       </div>`;
     return;
@@ -742,7 +743,7 @@ function renderDetail() {
   }
 
   if (editMode==="edit-phase"||editMode==="new-phase") {
-    const p = editMode==="new-phase" ? {name:"",color:"#7ecba1",blocks:[{start:"",end:""}]} : phases[selectedPhaseIdx];
+    const p = editMode==="new-phase" ? {name:"",color:"#7ecba1",blocks:[{start:"",end:""}],note:""} : phases[selectedPhaseIdx];
     if (!p) { empty.style.display="block";form.style.display="none"; return; }
     form.innerHTML=`
       <div class="section-title" style="margin-bottom:12px">${editMode==="new-phase"?"Nová fáze":"Editace fáze"}</div>
@@ -760,6 +761,7 @@ function renderDetail() {
           <div id="blocks-list" class="block-list"></div>
           <button class="add-btn" onclick="addBlock()" style="margin-top:5px;padding:3px 8px">+ Přidat blok</button>
         </div>
+        <div class="form-group"><label>Poznámka</label><textarea id="fp-note" placeholder="Volitelná poznámka">${escHtml(p.note||"")}</textarea></div>
         <div class="btn-row">
           <button class="btn btn-primary" onclick="savePhase(${selectedPhaseIdx})">Uložit</button>
           <button class="btn btn-ghost" onclick="cancelEdit()">Zrušit</button>
@@ -874,10 +876,11 @@ function savePhase(idx) {
   syncTempBlocks();
   const name=document.getElementById("fp-name").value.trim();
   const color=document.getElementById("fp-color").value;
+  const note=document.getElementById("fp-note").value.trim();
   const blocks=tempBlocks.filter(b=>b.start&&b.end);
   if(!name||!blocks.length)return;
-  if(editMode==="new-phase"){phases.push({name,color,blocks});selectedPhaseIdx=phases.length-1;}
-  else phases[idx]={name,color,blocks};
+  if(editMode==="new-phase"){phases.push({name,color,blocks,note});selectedPhaseIdx=phases.length-1;}
+  else phases[idx]={name,color,blocks,note};
   editMode="edit-phase"; saveState(); renderAll();
 }
 
