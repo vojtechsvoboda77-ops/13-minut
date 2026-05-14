@@ -199,7 +199,8 @@
     .gantt-panel { border-right: none; display: flex; flex-direction: column; flex: 1; overflow: hidden; }
     .gantt-top   { max-height: 255px; overflow-y: auto; overflow-x: hidden; padding: 10px 12px 0; flex-shrink: 0; }
     .gantt-wrap  { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .gantt-rows, .year-ruler, .unit-ruler { min-width: 500px; }
+    .gantt-rows { min-width: 500px; }
+    .year-ruler, .unit-ruler { min-width: 374px; } /* 500 - 126px offset */
     .gantt-events-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 16px; }
 
     .phase-header { margin-bottom: 8px; }
