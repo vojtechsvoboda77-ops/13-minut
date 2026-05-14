@@ -167,6 +167,24 @@
   ::-webkit-scrollbar-track { background: #f5f6f8; }
   ::-webkit-scrollbar-thumb { background: #dde1e8; border-radius: 3px; }
 
+  /* QR MODAL */
+  #qr-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2000; align-items:center; justify-content:center; }
+  #qr-modal.open { display:flex; }
+  .qr-box { background:#fff; border-radius:16px; padding:28px 28px 22px; text-align:center; max-width:300px; box-shadow:0 8px 40px #0003; }
+  .qr-box h3 { font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:4px; }
+  .qr-box p  { font-size:12px; color:#888; margin-bottom:16px; }
+  .qr-box img { width:200px; height:200px; border-radius:8px; border:1px solid #eef0f4; }
+  .qr-url { font-size:11px; color:#999; margin-top:10px; word-break:break-all; line-height:1.5; }
+  .qr-btns { display:flex; gap:8px; margin-top:16px; justify-content:center; }
+
+  /* QR v tisku */
+  .print-qr { display:none; }
+  @media print {
+    .print-qr { display:block; position:fixed; bottom:12px; right:12px; text-align:center; }
+    .print-qr img { width:72px; height:72px; }
+    .print-qr span { display:block; font-size:8px; color:#999; margin-top:3px; }
+  }
+
   /* PRINT */
   @media print {
     body { background: #fff; color: #000; }
@@ -215,6 +233,7 @@
       ⬆ Obnovit<input type="file" accept=".json" onchange="importData(this)" style="display:none">
     </label>
     <div class="hdr-sep"></div>
+    <button class="hdr-btn" onclick="showQR()" title="QR kód pro sdílení">⊞ QR</button>
     <button class="hdr-btn" onclick="window.print()" title="Tisk / PDF">🖨 Tisk</button>
     <button class="hdr-btn" id="lockBtn" onclick="toggleEditorMode()" title="Přihlásit jako editor">🔒 Editor</button>
   </div>
@@ -254,6 +273,26 @@
     <div class="detail-empty" id="detailEmpty">Vyberte událost nebo klikněte na + přidat</div>
     <div id="detailForm" style="display:none"></div>
   </div>
+</div>
+
+<!-- QR modal -->
+<div id="qr-modal" onclick="if(event.target===this)closeQR()">
+  <div class="qr-box">
+    <h3>Sdílet harmonogram</h3>
+    <p>Naskenujte telefonem nebo zkopírujte odkaz</p>
+    <img id="qr-img" src="" alt="QR kód">
+    <div class="qr-url" id="qr-url"></div>
+    <div class="qr-btns">
+      <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px" onclick="copyQRUrl(this)">📋 Kopírovat odkaz</button>
+      <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px" onclick="closeQR()">Zavřít</button>
+    </div>
+  </div>
+</div>
+
+<!-- QR v rohu při tisku -->
+<div class="print-qr">
+  <img id="print-qr-img" src="" alt="QR">
+  <span>harmonogram online</span>
 </div>
 
 <script type="module">
@@ -944,8 +983,34 @@ document.addEventListener("mouseup",()=>{
 function escHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function escAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;");}
 
+// ─── QR KÓD ──────────────────────────────────────────────────────────────────
+
+function showQR() {
+  const url = window.location.href;
+  const qrSrc = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=" + encodeURIComponent(url);
+  document.getElementById("qr-img").src = qrSrc;
+  document.getElementById("print-qr-img").src = "https://api.qrserver.com/v1/create-qr-code/?size=80x80&margin=4&data=" + encodeURIComponent(url);
+  document.getElementById("qr-url").textContent = url;
+  document.getElementById("qr-modal").classList.add("open");
+}
+
+function closeQR() {
+  document.getElementById("qr-modal").classList.remove("open");
+}
+
+function copyQRUrl(btn) {
+  navigator.clipboard.writeText(window.location.href).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = "✓ Zkopírováno";
+    setTimeout(() => btn.textContent = orig, 2000);
+  });
+}
+
 // ─── EXPOSE GLOBALS (onclick attrs) ──────────────────────────────────────────
 
+window.showQR          = showQR;
+window.closeQR         = closeQR;
+window.copyQRUrl       = copyQRUrl;
 window.exportData      = exportData;
 window.importData      = importData;
 window.toggleEditorMode= toggleEditorMode;
