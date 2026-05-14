@@ -58,10 +58,10 @@
 
   /* RULER */
   .gantt-wrap { position: relative; }
-  .year-ruler  { display: flex; }
-  .year-cell   { flex: none; font-size: 10px; font-weight: 700; color: #444; padding: 0 0 2px 4px; border-left: 1px solid #eef0f4; }
-  .unit-ruler  { display: flex; border-bottom: 1px solid #dde1e8; min-height: 16px; }
-  .unit-cell   { flex: none; font-size: 10px; color: #444; padding: 2px 0 3px 0; text-align: center; border-left: 1px solid #eef0f4; overflow: hidden; min-height: 16px; }
+  .year-ruler  { position: relative; height: 16px; overflow: hidden; margin-left: 126px; }
+  .year-cell   { position: absolute; top: 0; bottom: 0; font-size: 10px; font-weight: 700; color: #444; padding: 0 0 2px 4px; border-left: 1px solid #eef0f4; overflow: hidden; }
+  .unit-ruler  { position: relative; border-bottom: 1px solid #dde1e8; height: 16px; overflow: hidden; margin-left: 126px; }
+  .unit-cell   { position: absolute; top: 0; bottom: 0; font-size: 10px; color: #444; padding: 2px 0 3px 0; text-align: center; border-left: 1px solid #eef0f4; overflow: hidden; }
 
   /* GANTT ROWS */
   .gantt-rows  { position: relative; padding-top: 6px; }
@@ -536,9 +536,11 @@ function renderGantt() {
   Object.entries(byYear).forEach(([y,ms]) => {
     const fs = new Date(ms[0].getFullYear(),ms[0].getMonth(),1);
     const le = new Date(ms[ms.length-1].getFullYear(),ms[ms.length-1].getMonth()+1,0);
-    const s=Math.max(0,(fs-tlStart)/86400000/tlTotal*100);
-    const e=Math.min(100,(le-tlStart)/86400000/tlTotal*100);
-    const cell = document.createElement("div"); cell.className="year-cell"; cell.style.width=(e-s)+"%"; cell.textContent=y;
+    const visS=Math.max(0,(fs-tlStart)/86400000/tlTotal*100);
+    const visE=Math.min(100,(le-tlStart)/86400000/tlTotal*100);
+    if(visE<=visS) return;
+    const cell = document.createElement("div"); cell.className="year-cell";
+    cell.style.left=visS+"%"; cell.style.width=(visE-visS)+"%"; cell.textContent=y;
     yearEl.appendChild(cell);
   });
 
@@ -547,18 +549,28 @@ function renderGantt() {
   months.forEach(m => {
     const ms=new Date(m.getFullYear(),m.getMonth(),1);
     const me=new Date(m.getFullYear(),m.getMonth()+1,0);
-    const s=Math.max(0,(ms-tlStart)/86400000/tlTotal*100);
-    const e=Math.min(100,(me-tlStart)/86400000/tlTotal*100);
-    const cell=document.createElement("div"); cell.className="unit-cell"; cell.style.width=(e-s)+"%";
+    const visS=Math.max(0,(ms-tlStart)/86400000/tlTotal*100);
+    const visE=Math.min(100,(me-tlStart)/86400000/tlTotal*100);
+    if(visE<=visS) return;
+    const cell=document.createElement("div"); cell.className="unit-cell";
+    cell.style.left=visS+"%"; cell.style.width=(visE-visS)+"%";
     cell.textContent=m.toLocaleDateString("cs-CZ",{month:"short"}).replace(".","");
     unitEl.appendChild(cell);
   });
 
   // ── Rows ──
   const rowsEl = document.getElementById("ganttRows"); rowsEl.innerHTML = "";
+
+  // Předpočítáme pozice hranic měsíců pro mřížku
+  const gridLinePcts = [];
+  { let c = new Date(tlStart.getFullYear(), tlStart.getMonth()+1, 1);
+    while(c <= tlEnd) { const lp=(c-tlStart)/86400000/tlTotal*100; if(lp>0&&lp<100)gridLinePcts.push(lp); c=new Date(c.getFullYear(),c.getMonth()+1,1); }
+  }
+
   const todayStr = new Date().toISOString().slice(0,10);
   const todayPct = pct(todayStr);
-  const tl = document.createElement("div"); tl.className="today-line"; tl.style.left=todayPct+"%";
+  const tl = document.createElement("div"); tl.className="today-line";
+  tl.style.left=`calc(126px + ${todayPct/100} * (100% - 126px))`;
   tl.innerHTML=`<div class="today-label">dnes</div>`; rowsEl.appendChild(tl);
 
   phases.forEach((p, idx) => {
@@ -571,6 +583,7 @@ function renderGantt() {
     const label  = document.createElement("div"); label.className="gantt-label"; label.textContent=p.name;
     label.onclick=()=>selectPhase(idx);
     const track  = document.createElement("div"); track.className="gantt-track";
+    gridLinePcts.forEach(lp=>{const ln=document.createElement("div");ln.style.cssText=`position:absolute;top:0;bottom:0;width:1px;left:${lp}%;background:rgba(0,0,0,0.08);pointer-events:none;`;track.appendChild(ln);});
 
     p.blocks.forEach((b,bIdx) => {
       const bar = document.createElement("div");
@@ -622,6 +635,7 @@ function renderGantt() {
     const mHandle = document.createElement("div"); mHandle.className="drag-handle";
     const mLabel  = document.createElement("div"); mLabel.className="gantt-label"; mLabel.textContent="milníky"; mLabel.style.color="#555";
     const mTrack  = document.createElement("div"); mTrack.className="milestone-track";
+    gridLinePcts.forEach(lp=>{const ln=document.createElement("div");ln.style.cssText=`position:absolute;top:0;bottom:0;width:1px;left:${lp}%;background:rgba(0,0,0,0.08);pointer-events:none;`;mTrack.appendChild(ln);});
     milestones.forEach(ev => {
       const diamond = document.createElement("div"); diamond.className="milestone-diamond";
       diamond.style.left=pct(ev.date)+"%"; diamond.style.background=ev.color||"#e0c040";
